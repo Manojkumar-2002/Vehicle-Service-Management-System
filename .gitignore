@@ -1,0 +1,44 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Django-specific
+db.sqlite3
+db.sqlite3-journal
+local_settings.py
+.env
+*.log
+
+# Media/Static files
+/media/
+/static/
+# Avoid ignoring collected static files if you need them for certain deployments
+# /staticfiles/
+
+# Virtual Environments
+venv/
+env/
+.venv/
+ENV/
+
+# Distribution / packaging
+bin/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# PyCharm / VSCode settings
+.idea/
+.vscode/

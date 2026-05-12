@@ -10,7 +10,7 @@ from apps.services.constants.enums import OrderStatus, PeriodChoice
 from apps.common.utils.response_utils import ResponseHandler
 from rest_framework import status
 from rest_framework.views import APIView
-
+from decimal import Decimal
 
 class RevenueAnalyticsView(APIView):
     """
@@ -56,14 +56,20 @@ class RevenueAnalyticsView(APIView):
 
         # Default if no dates provided (last 30 days)
         if not v_data.get('from_date') and not v_data.get('to_date'):
-            filters['created_at__gte'] = timezone.now() - timedelta(days=30)
+            now = timezone.now()
+            if period == PeriodChoice.DAILY:
+                filters['created_at__gte'] = now - timedelta(days=30)
+            elif period == PeriodChoice.MONTHLY:
+                filters['created_at__gte'] = now - timedelta(days=30*6)  # Last 6 months
+            elif period == PeriodChoice.YEARLY:
+                filters['created_at__gte'] = now - timedelta(days=365)  # Last year
 
         # Aggregate — Coalesce ensures 0 instead of NULL when no issues
         data = (
             ServiceOrder.objects.filter(**filters)
             .annotate(date_label=config['trunc'])
             .values('date_label')
-            .annotate(amount=Coalesce(Sum('issues__price'), 0))
+            .annotate(amount=Coalesce(Sum('issues__price'), Decimal('0.00')))
             .order_by('date_label')
         )
 
@@ -79,3 +85,4 @@ class RevenueAnalyticsView(APIView):
             "Revenue data fetched successfully",
             data=formatted_data
         )
+    

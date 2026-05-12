@@ -1,35 +1,72 @@
-from rest_framework import viewsets, status
+from rest_framework import status
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
-from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
 from decimal import Decimal
+
 from ..models import ServiceOrder
+from ..models.payment import Payment
 from apps.services.constants.enums import OrderStatus
+from apps.common.utils.response_utils import ResponseHandler
 
 
 class PaymentProcessView(APIView):
-    """Handles the 'Verification' of payment and closes the order."""
+    """Handles payment processing with JWT authentication and audit trail.
+    - Users can only pay for their own orders
+    - Operations users can pay for any order
+    """
+    permission_classes = [IsAuthenticated]
+
     def post(self, request, order_id):
-        order = get_object_or_404(ServiceOrder, id=order_id)
+        user = request.user
+        # Operations users can pay any order; regular users only their own
+        if user.groups.filter(name='operations').exists():
+            order = get_object_or_404(ServiceOrder, id=order_id)
+        else:
+            order = get_object_or_404(ServiceOrder, id=order_id, created_by=user)
 
         if order.status == OrderStatus.PAID:
-            return Response({"error": "Already paid."}, status=status.HTTP_400_BAD_REQUEST)
+            return ResponseHandler.error_response(
+                "Already paid.",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
 
         # Get amount from payload
         amount_paid_raw = request.data.get('amount_paid')
         if not amount_paid_raw:
-            return Response({"error": "amount_paid required."}, status=status.HTTP_400_BAD_REQUEST)
+            return ResponseHandler.error_response(
+                "amount_paid required.",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
 
         # Compare provided amount with system total
         amount_paid = Decimal(str(amount_paid_raw))
         if amount_paid != order.total_price:
-            return Response({
-                "error": "Amount mismatch",
-                "expected": float(order.total_price),
-                "received": float(amount_paid)
-            }, status=status.HTTP_400_BAD_REQUEST)
+            return ResponseHandler.error_response(
+                "Amount mismatch",
+                errors={
+                    "expected": float(order.total_price),
+                    "received": float(amount_paid)
+                },
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
 
-        # Finalize
+        # Finalize order
         order.status = OrderStatus.PAID
         order.save()
-        return Response({"message": "Payment successful", "status": "paid"})
+
+        # Create payment record for audit trail
+        payment = Payment.objects.create(
+            order=order,
+            amount=amount_paid,
+        )
+
+        return ResponseHandler.success_response(
+            "Payment successful",
+            data={
+                "status": "paid",
+                "transaction_id": payment.transaction_id,
+                "paid_at": payment.paid_at,
+            },
+            status_code=status.HTTP_200_OK
+        )

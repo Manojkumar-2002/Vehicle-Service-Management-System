@@ -7,7 +7,8 @@ from .views import (
     ServiceOrderViewSet, 
     IssueViewSet,
     PaymentProcessView,
-    RevenueAnalyticsView
+    RevenueAnalyticsView,
+    ComponentAnalyticsView
 )
 
 # Initialize the router
@@ -25,4 +26,5 @@ urlpatterns = [
     path('', include(router.urls)),
     path('orders/<int:order_id>/pay/', PaymentProcessView.as_view(), name='order-pay'),
     path('revenue-analytics/', RevenueAnalyticsView.as_view(), name='revenue-analytics'),
+    path('component-analytics/', ComponentAnalyticsView.as_view(), name='component-analytics'),
 ]

@@ -1,16 +1,17 @@
 from rest_framework.permissions import IsAuthenticated
-from django.db.models import Sum
+from django.db.models import Sum, Count, Q, DecimalField
 from django.db.models.functions import Coalesce, TruncDay, TruncMonth, TruncYear
 from django.utils import timezone
 from datetime import timedelta
 
-from ..models import ServiceOrder
+from ..models import ServiceOrder, Issue, Component
 from ..serializers import RevenueQuerySerializer
-from apps.services.constants.enums import OrderStatus, PeriodChoice
+from apps.services.constants.enums import OrderStatus, ServiceType, PeriodChoice
 from apps.common.utils.response_utils import ResponseHandler
 from rest_framework import status
 from rest_framework.views import APIView
 from decimal import Decimal
+
 
 class RevenueAnalyticsView(APIView):
     """
@@ -85,4 +86,51 @@ class RevenueAnalyticsView(APIView):
             "Revenue data fetched successfully",
             data=formatted_data
         )
-    
+
+
+class ComponentAnalyticsView(APIView):
+    """
+    Component analytics endpoint showing usage statistics.
+    - Which components are most used (repair vs replace breakdown)
+    - Revenue generated per component
+    - Only considers PAID orders for revenue data
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+
+        # Build order filters: only paid orders, scoped by user role
+        order_filters = {'status': OrderStatus.PAID}
+        if not user.groups.filter(name='operations').exists():
+            order_filters['created_by'] = user
+
+        # Aggregate component usage from issues on paid orders
+        data = (
+            Issue.objects.filter(service_order__in=ServiceOrder.objects.filter(**order_filters))
+            .values('component__id', 'component__name')
+            .annotate(
+                total_used=Count('id'),
+                repair_count=Count('id', filter=Q(issue_type=ServiceType.REPAIR)),
+                replace_count=Count('id', filter=Q(issue_type=ServiceType.REPLACE)),
+                total_revenue=Coalesce(Sum('price'), Decimal('0.00')),
+            )
+            .order_by('-total_used')
+        )
+
+        formatted_data = [
+            {
+                "component_id": item['component__id'],
+                "component_name": item['component__name'],
+                "total_used": item['total_used'],
+                "repair_count": item['repair_count'],
+                "replace_count": item['replace_count'],
+                "total_revenue": float(item['total_revenue']),
+            }
+            for item in data
+        ]
+
+        return ResponseHandler.success_response(
+            "Component analytics fetched successfully",
+            data=formatted_data
+        )

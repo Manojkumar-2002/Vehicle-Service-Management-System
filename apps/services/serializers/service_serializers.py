@@ -43,6 +43,12 @@ class IssueSerializer(serializers.ModelSerializer):
         if service_order and service_order.status == OrderStatus.PAID:
             raise serializers.ValidationError("This order is PAID. You cannot add new parts to it.")
 
+        # 3. OWNERSHIP CHECK (Regular users can only add issues to their own orders)
+        request = self.context.get('request')
+        if request and not request.user.groups.filter(name='operations').exists():
+            if service_order and hasattr(service_order, 'created_by') and service_order.created_by != request.user:
+                raise serializers.ValidationError("You can only add issues to your own orders.")
+
         return data
 
 class ServiceOrderSerializer(serializers.ModelSerializer):

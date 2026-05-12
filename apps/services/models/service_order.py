@@ -1,7 +1,8 @@
 from django.db import models
 from apps.services.constants.enums import OrderStatus, ServiceType
+from .audit_trail import AuditTrail
 
-class ServiceOrder(models.Model):
+class ServiceOrder(AuditTrail):
     # String reference avoids importing Vehicle class directly
     vehicle = models.ForeignKey(
         'services.Vehicle', 
@@ -10,8 +11,15 @@ class ServiceOrder(models.Model):
     )
     description = models.TextField(blank=True)
     status = models.CharField(max_length=20, choices=OrderStatus.choices, default=OrderStatus.PENDING)
-    created_at = models.DateTimeField(auto_now_add=True)
 
+    class Meta:
+        app_label = 'services'
+        indexes = [
+            models.Index(fields=['status']),
+            models.Index(fields=['created_at']),
+            models.Index(fields=['created_by']),
+            models.Index(fields=['status', 'created_at', 'created_by']),
+        ]
 
     @property
     def total_price(self):
